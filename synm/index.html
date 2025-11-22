@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>synm</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Google Fonts (Inter & JetBrains Mono) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        :root{
+            --glass-bg: rgba(255,255,255,0.035);
+            --glass-bg-strong: rgba(255,255,255,0.06);
+            --glass-border: rgba(255,255,255,0.12);
+            --glass-contrast: rgba(255,255,255,0.04);
+        }
+
+        /* Keep the underlying window transparent; only UI elements should show */
+        html, body { height: 100%; margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: transparent; -webkit-font-smoothing:antialiased; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Dragging helpers for frameless window */
+        .drag { -webkit-app-region: drag; }
+        .no-drag { -webkit-app-region: no-drag; }
+
+        /* Main glass panel */
+        #glass-panel{
+            background: linear-gradient(180deg, var(--glass-bg-strong), rgba(255,255,255,0.02));
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+            /* subtle inner highlight only */
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.01);
+            border: 0; /* remove any visible stroke */
+        }
+
+        /* Hide any thin utility borders inside the panel to match reference */
+        #glass-panel * { border-color: transparent !important; }
+
+        /* Restore border for traffic buttons (explicitly) so they keep a crisp outline */
+        #glass-panel .traffic-btn { border-color: rgba(0,0,0,0.16) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 rgba(0,0,0,0.18) !important; }
+
+
+        /* removed #frame wrapper — UI uses only #glass-panel now */
+
+        /* subtle sheen overlay */
+        #glass-panel::after{
+            content: '';
+            position: absolute; inset: 0; pointer-events: none; border-radius: 0;
+            background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));
+            mix-blend-mode: overlay; opacity: 0.6;
+        }
+
+        /* Sidebar glass */
+        .w-20 {
+            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+            border-right: transparent; /* remove subtle sidebar stroke */
+            backdrop-filter: blur(10px) saturate(120%);
+        }
+
+        /* Topbar is draggable but interactive bits use .no-drag */
+        #topbar { background: transparent; }
+
+        /* Traffic lights (macOS style) inside the chrome bar */
+        .traffic-container{ display:flex; gap:8px; align-items:center; padding-left:4px; }
+        .traffic-btn{ width:12px; height:12px; border-radius:50%; display:inline-block; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 rgba(0,0,0,0.18); border:1px solid rgba(0,0,0,0.16); cursor:pointer; }
+        .traffic-btn:hover{ transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 3px 8px rgba(0,0,0,0.25); }
+        .traffic-close{ background:#ff5f57; }
+        .traffic-min{ background:#febc2e; }
+        .traffic-max{ background:#28c840; }
+
+        /* Editor/Content area glass treatment */
+        #glass-panel .flex-1.flex-col.relative {
+            background: transparent;
+        }
+
+        /* Editor inner area */
+        #code-highlight, #code-input { font-family: 'JetBrains Mono', monospace; }
+
+        /* Decorative blurred color blob (soft tint behind editor) */
+        .accent-blob{
+            position: absolute; left: 160px; top: 120px; width: 420px; height: 220px; pointer-events: none;
+            background: radial-gradient(40% 60% at 30% 40%, rgba(78, 115, 255, 0.12), rgba(124, 58, 237, 0.05) 40%, transparent 60%);
+            filter: blur(40px) saturate(120%);
+            transform: translateZ(0);
+            mix-blend-mode: screen;
+            z-index: 1;
+            opacity: 0.72;
+        }
+
+        /* Thin toolbar that sits above the tabs (subtle separator matching reference) */
+        .tabs-topbar{ height:8px; width:100%; display:flex; align-items:center; gap:8px; padding:0 12px; border-bottom: transparent; }
+
+        /* Terminal glass */
+        .h-32.border-t { background: linear-gradient(0deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-top: transparent; backdrop-filter: blur(8px); }
+
+        /* Modals */
+        .modal-glass {
+            background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+            border: 1px solid rgba(255,255,255,0.06);
+            box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+            backdrop-filter: blur(12px);
+        }
+
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+
+        /* Hide Scrollbar */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Syntax Highlighting Colors */
+        .token-comment { color: #94a3b8; font-style: italic; }
+        .token-string { color: #4ade80; }
+        .token-number { color: #93c5fd; }
+        .token-keyword { color: #f472b6; font-weight: bold; }
+        .token-builtin { color: #67e8f9; }
+        .token-default { color: rgba(255, 255, 255, 0.95); }
+    </style>
+    <style>
+        /* Glass pop animation for modals & menus */
+        .glass-pop { backdrop-filter: blur(10px) saturate(120%); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.06); }
+        .pop-enter { transform: translateY(-6px) scale(0.985); opacity: 0; }
+        .pop-show { transform: translateY(0) scale(1); opacity: 1; transition: transform 180ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease; }
+        .pop-hide { transform: translateY(-6px) scale(0.985); opacity: 0; transition: transform 160ms ease, opacity 160ms ease; }
+
+        /* Context menu specific tweaks */
+        #context-menu { min-width: 160px; padding: 6px; }
+        #context-menu .liquid-item { padding: 8px 10px; border-radius: 8px; display:flex; align-items:center; gap:8px; }
+        #context-menu .liquid-item:hover { background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); transform: translateY(-1px); }
+
+        /* Modal center animation helpers */
+        .modal-center { transition: opacity 180ms ease, transform 180ms cubic-bezier(.2,.8,.2,1); transform-origin: center; }
+    </style>
+    <style>
+        /* window chrome bar sits above the panel and is draggable */
+        #window-chrome{ -webkit-app-region: drag; background: transparent; backdrop-filter: blur(6px); }
+        #window-chrome .no-drag{ -webkit-app-region: no-drag; }
+        /* ensure traffic buttons are clickable */
+        .traffic-btn.no-drag { -webkit-app-region: no-drag; }
+    </style>
+</head>
+<body class="min-h-screen w-full bg-transparent text-white overflow-hidden relative" id="app-body">
+
+    <!-- Window chrome (fixed) - separate top bar for traffic lights -->
+    <div id="window-chrome" class="drag" style="position:fixed;left:0;top:0;right:0;height:36px;z-index:1000;display:flex;align-items:center;padding-left:10px;">
+        <div class="traffic-container no-drag" aria-hidden="false" style="display:flex;align-items:center;gap:8px;">
+            <button id="btn-close" class="traffic-btn traffic-close no-drag" title="Close" aria-label="Close"></button>
+            <button id="btn-minimize" class="traffic-btn traffic-min no-drag" title="Minimize" aria-label="Minimize"></button>
+            <button id="btn-maximize" class="traffic-btn traffic-max no-drag" title="Zoom" aria-label="Zoom"></button>
+        </div>
+    </div>
+
+    <!-- Main Glass Window: fill entire window below the chrome bar -->
+    <div id="glass-panel" style="position:fixed;left:0;top:36px;right:0;bottom:0;" class="bg-slate-900/30 backdrop-blur-xl rounded-none flex overflow-hidden relative z-10 transition-colors duration-700">
+        
+        <!-- Sidebar (flush top/bottom) -->
+        <div class="w-20 bg-white/[0.02] backdrop-blur-md flex flex-col items-center py-0 gap-4 z-20" style="height:100%;">
+            <!-- Logo -->
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-2" style="margin-top:10px;">
+                <span class="text-white font-bold text-xl font-sans tracking-tight">S</span>
+            </div>
+
+            <!-- Nav Buttons -->
+            <div class="flex flex-col gap-4 w-full px-3">
+                <button onclick="switchView('editor')" id="btn-editor" class="flex flex-col items-center justify-center gap-1.5 group w-full py-3 rounded-none transition-all duration-300 bg-white/10 shadow-inner">
+                    <div class="rounded-lg transition-colors text-blue-400" id="icon-editor-wrapper">
+                        <i data-lucide="file-text" size="22" stroke-width="2"></i>
+                    </div>
+                    <span class="text-[10px] font-medium text-white" id="text-editor">Editor</span>
+                </button>
+
+                <button onclick="switchView('settings')" id="btn-settings" class="flex flex-col items-center justify-center gap-1.5 group w-full py-3 rounded-xl transition-all duration-300 hover:bg-white/5">
+                    <div class="rounded-lg transition-colors text-white/40 group-hover:text-white/70" id="icon-settings-wrapper">
+                        <i data-lucide="settings" size="22" stroke-width="2"></i>
+                    </div>
+                    <span class="text-[10px] font-medium text-white/40" id="text-settings">Settings</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="flex-1 flex flex-col relative bg-gradient-to-b from-white/[0.02] to-transparent overflow-hidden" style="height:100%;">
+            
+            <!-- VIEW: EDITOR -->
+            <div id="view-editor" class="flex flex-col h-full w-full">
+                <!-- Top Bar (split: small toolbar above tabs + tab row) -->
+                <div id="topbar" class="h-14 drag flex flex-col justify-between px-0 bg-white/[0.01] shrink-0" style="width:100%;">
+                    <!-- thin toolbar above tabs -->
+                    <div class="tabs-topbar w-full flex items-center relative"></div>
+
+                    <!-- Tabs row (below the thin toolbar) -->
+                    <div class="w-full flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-1 h-8 pt-1 overflow-x-auto no-scrollbar w-full mr-0" id="tabs-container">
+                            <!-- Tabs injected via JS -->
+                        </div>
+
+                        <button onclick="addTab()" class="w-8 h-8 no-drag flex flex-shrink-0 items-center justify-center hover:bg-white/5 rounded-lg text-white/40 hover:text-white/80 transition-colors ml-1">
+                            <i data-lucide="plus" size="16"></i>
+                        </button>
+
+                        <!-- Execute Button -->
+                        <div class="flex items-center gap-3 pr-3 flex-shrink-0 pl-2 ml-2">
+                            <button id="port-selector" title="Click to cycle port" class="no-drag px-2 py-1 rounded-md bg-white/5 text-xs text-white/80 hover:bg-white/10 transition-colors" style="-webkit-app-region:no-drag">5553</button>
+                            <button id="btn-execute" title="Execute (Alt+Click = all ports)" class="w-8 h-8 no-drag flex items-center justify-center rounded-full hover:bg-white/10 transition-all group relative">
+                                <div class="absolute inset-0 bg-white/5 rounded-full blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <i data-lucide="play" size="16" class="fill-white/90 text-white/90 relative z-10 ml-0.5"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                
+
+                <!-- Editor Area -->
+                <div class="flex-1 relative flex font-mono text-sm overflow-hidden bg-transparent">
+                    <!-- Line Numbers -->
+                    <div id="line-numbers" class="w-12 py-4 flex flex-col items-end pr-4 text-white/20 select-none bg-black/10 text-xs leading-6 overflow-hidden">
+                        <div>1</div>
+                    </div>
+                    
+                    <div class="flex-1 relative overflow-hidden">
+                        <!-- Syntax Highlight Layer -->
+                        <pre id="code-highlight" class="absolute inset-0 p-4 pointer-events-none whitespace-pre font-mono text-sm leading-6 z-0 overflow-hidden m-0"></pre>
+
+                        <!-- Input Layer -->
+                        <textarea 
+                            id="code-input" 
+                            spellcheck="false" 
+                            class="absolute inset-0 w-full h-full bg-transparent text-transparent caret-white p-4 outline-none resize-none font-mono text-sm leading-6 whitespace-pre z-10"
+                        ></textarea>
+                    </div>
+                </div>
+
+                <!-- Terminal -->
+                <div class="h-32 bg-black/10 backdrop-blur-md flex flex-col shrink-0" style="backdrop-filter: blur(10px);">
+                    <div class="flex items-center justify-between px-4 py-2 bg-white/[0.02]">
+                        <div class="flex items-center gap-2">
+                            <div id="attach-indicator" class="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse"></div>
+                            <span id="terminal-label" class="text-xs font-medium text-white/80 tracking-wide">Terminal</span>
+                        </div>
+                        <button onclick="clearTerminal()" class="p-1 hover:bg-white/10 rounded-md transition-colors group">
+                            <i data-lucide="trash-2" size="14" class="text-white/40 group-hover:text-white/80"></i>
+                        </button>
+                    </div>
+                          <div id="terminal-content" class="flex-1 p-3 font-mono text-[11px] text-white/40 overflow-y-auto custom-scrollbar">
+                       <div class="opacity-50 hover:opacity-100 transition-opacity">
+       a                  <span class="text-blue-400">info:</span> Executor initialized successfully...
+                       </div>
+                       <div class="opacity-50 hover:opacity-100 transition-opacity mt-1">
+                         <span class="text-green-400">ready:</span> Waiting for script execution
+                       </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: SETTINGS -->
+            <div id="view-settings" class="flex-1 p-8 overflow-y-auto custom-scrollbar hidden">
+                <div class="flex items-center justify-between mb-6">
+                    <h1 class="text-2xl font-bold text-white flex items-center gap-3">
+                        <i data-lucide="settings" class="text-white/40"></i> Settings
+                    </h1>
+                    <button onclick="switchView('editor')" class="p-2 rounded-md hover:bg-white/5 no-drag" title="Close settings"><i data-lucide="x" class="text-white/50"></i></button>
+                </div>
+
+                <div class="space-y-4 max-w-2xl mx-auto">
+                    <!-- Accordion: Executor -->
+                    <div class="mb-2 overflow-hidden rounded-xl bg-black/20 border border-white/5 transition-all duration-300">
+                        <button onclick="toggleAccordion(this)" class="w-full flex items-center justify-between p-4 text-left hover:bg-white/5 transition-colors">
+                            <div class="flex items-center gap-3">
+                                <i data-lucide="cpu" size="18" class="text-white/70"></i>
+                                <span class="text-white/90 font-medium">Executor</span>
+                            </div>
+                            <!-- Added class accordion-icon -->
+                            <i data-lucide="chevron-down" size="16" class="accordion-icon text-white/50 transition-transform"></i>
+                        </button>
+                        <div class="max-h-0 overflow-hidden transition-all duration-300 ease-in-out accordion-content">
+                            <div class="p-4 pt-0 space-y-1">
+                                <div class="flex items-center justify-between py-3 group cursor-pointer" onclick="toggleSwitch(this)">
+                                    <div class="flex flex-col">
+                                        <span class="text-white/90 font-medium text-sm">CPP Drawing Library</span>
+                                        <span class="text-white/40 text-xs">Performance impact warning</span>
+                                    </div>
+                                    <div class="switch-bg w-11 h-6 flex items-center rounded-full p-1 duration-300 ease-in-out bg-blue-500/80">
+                                        <div class="switch-dot bg-white w-4 h-4 rounded-full shadow-md transform duration-300 ease-in-out translate-x-5"></div>
+                                    </div>
+                                </div>
+                                <div class="p-2 pt-0">
+                                    <button onclick="runHaskellPrompt()" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-medium text-white">Run Haskell File</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Accordion: UI -->
+                    <div class="mb-2 overflow-hidden rounded-xl bg-black/20 border border-white/5 transition-all duration-300">
+                        <button onclick="toggleAccordion(this)" class="w-full flex items-center justify-between p-4 text-left hover:bg-white/5 transition-colors">
+                            <div class="flex items-center gap-3">
+                                <i data-lucide="monitor" size="18" class="text-white/70"></i>
+                                <span class="text-white/90 font-medium">User Interface</span>
+                            </div>
+                            <!-- Added class accordion-icon -->
+                            <i data-lucide="chevron-down" size="16" class="accordion-icon text-white/50 transition-transform"></i>
+                        </button>
+                        <div class="max-h-96 overflow-hidden transition-all duration-300 ease-in-out accordion-content">
+                            <div class="p-4 pt-0 space-y-1">
+                                <div class="flex items-center justify-between py-3 group cursor-pointer" onclick="toggleSwitch(this)" data-action="always-on-top">
+                                    <div class="flex flex-col">
+                                        <span class="text-white/90 font-medium text-sm">Always on Top</span>
+                                    </div>
+                                    <div class="switch-bg w-11 h-6 flex items-center rounded-full p-1 duration-300 ease-in-out bg-white/10">
+                                        <div class="switch-dot bg-white w-4 h-4 rounded-full shadow-md transform duration-300 ease-in-out translate-x-0"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex items-center justify-between py-4 border-t border-white/5 mt-2">
+                                    <div class="flex flex-col">
+                                        <span class="text-white/90 font-medium text-sm">Themes</span>
+                                        <span class="text-white/40 text-xs">Customize appearance</span>
+                                    </div>
+                                    <button onclick="openThemeModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg text-xs font-medium text-white transition-all hover:scale-105">
+                                        Open Themes
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Context Menu -->
+        <div id="context-menu" class="hidden fixed z-50 w-40 bg-[#1e1e2e]/90 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl p-1.5 flex-col gap-1">
+            <button onclick="startRename()" class="flex items-center gap-2 px-2 py-1.5 text-xs text-white/80 hover:bg-white/10 rounded-lg transition-colors w-full text-left">
+                <i data-lucide="edit-2" size="12" class="text-white/40"></i> Rename
+            </button>
+            <button onclick="duplicateTab()" class="flex items-center gap-2 px-2 py-1.5 text-xs text-white/80 hover:bg-white/10 rounded-lg transition-colors w-full text-left">
+                <i data-lucide="copy" size="12" class="text-white/40"></i> Duplicate
+            </button>
+            <button onclick="promptDelete()" class="flex items-center gap-2 px-2 py-1.5 text-xs text-red-400 hover:bg-red-500/20 rounded-lg transition-colors w-full text-left">
+                <i data-lucide="trash-2" size="12" class="text-red-400"></i> Delete
+            </button>
+        </div>
+
+        <!-- Rename Modal -->
+        <div id="modal-rename" class="hidden absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div class="w-80 bg-[#1a1b26] border border-white/10 rounded-2xl p-5 shadow-2xl">
+                <h3 class="text-white font-medium mb-1">Rename Tab</h3>
+                <input id="rename-input" type="text" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white mb-4 focus:outline-none focus:border-blue-500/50 transition-colors">
+                <div class="flex justify-end gap-2">
+                    <button onclick="closeModals()" class="px-3 py-1.5 text-xs text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Cancel</button>
+                    <button onclick="confirmRename()" class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors">Rename</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete Modal -->
+        <div id="modal-delete" class="hidden absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div class="w-80 bg-[#1a1b26] border border-white/10 rounded-2xl p-5 shadow-2xl">
+                <h3 class="text-white font-medium mb-1">Delete Tab</h3>
+                <p class="text-white/40 text-xs mb-4">Are you sure? This cannot be undone.</p>
+                <div class="flex justify-end gap-2">
+                    <button onclick="closeModals()" class="px-3 py-1.5 text-xs text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Cancel</button>
+                    <button onclick="confirmDelete()" class="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors">Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Theme Modal -->
+        <div id="modal-theme" class="hidden absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-8">
+            <div class="w-full max-w-lg bg-[#1a1b26] border border-white/10 rounded-2xl p-6 shadow-2xl transform scale-100">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold text-white">Themes</h2>
+                    <button onclick="closeModals()" class="p-1 hover:bg-white/10 rounded-full transition-colors"><i data-lucide="x" class="text-white/50 hover:text-white"></i></button>
+                </div>
+                <div class="grid grid-cols-3 gap-4" id="theme-grid">
+                    <!-- Generated by JS -->
+                </div>
+            </div>
+        </div>
+
+    <script>
+        // --- STATE ---
+        let tabs = [
+            { id: 1, title: 'Untitled 1', content: '-- write your script here...\n' }
+        ];
+        let activeTabId = 1;
+        let contextMenuTargetId = null;
+        // Selected port for execute (5553..5562). Use string 'all' to target all ports.
+        let currentPort = 5553;
+
+        // --- THEMES ---
+        const themes = {
+            default: { name: 'Default', classes: 'bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900' },
+            editor: { name: 'Editor', classes: 'bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-950' },
+            sunset: { name: 'Sunset', classes: 'bg-gradient-to-br from-orange-900 via-red-900 to-purple-900' },
+            roseGold: { name: 'Rose Gold', classes: 'bg-gradient-to-br from-rose-900 via-pink-900 to-slate-900' },
+            arctic: { name: 'Arctic', classes: 'bg-gradient-to-br from-cyan-900 via-blue-900 to-slate-900' },
+            neon: { name: 'Neon', classes: 'bg-gradient-to-br from-green-900 via-emerald-900 to-black' },
+            purpleRain: { name: 'Purple Rain', classes: 'bg-gradient-to-br from-purple-900 via-fuchsia-900 to-indigo-900' },
+        };
+        let currentTheme = 'purpleRain';
+
+        // --- INIT ---
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            applyTheme(currentTheme);
+            renderTabs();
+            updateEditor();
+            initEditorEvents();
+            // sync Always on Top initial state
+            if (window.electronAlways && window.electronAlways.getAlwaysOnTop) {
+                window.electronAlways.getAlwaysOnTop().then((val) => {
+                    // find the switch and set its visual state
+                    const switchEl = document.querySelector('[data-action="always-on-top"]');
+                    if (switchEl) {
+                        const bg = switchEl.querySelector('.switch-bg');
+                        const dot = switchEl.querySelector('.switch-dot');
+                        if (val) {
+                            bg.classList.remove('bg-white/10'); bg.classList.add('bg-blue-500/80');
+                            dot.classList.remove('translate-x-0'); dot.classList.add('translate-x-5');
+                        } else {
+                            bg.classList.remove('bg-blue-500/80'); bg.classList.add('bg-white/10');
+                            dot.classList.remove('translate-x-5'); dot.classList.add('translate-x-0');
+                        }
+                    }
+                }).catch(()=>{});
+            }
+        });
+
+        // --- TABS LOGIC ---
+        function renderTabs() {
+            const container = document.getElementById('tabs-container');
+            container.innerHTML = '';
+
+            tabs.forEach(tab => {
+                const isActive = tab.id === activeTabId;
+                const el = document.createElement('div');
+                el.className = `tab-item no-drag h-full px-3 min-w-[110px] max-w-[240px] rounded-t-lg flex items-center gap-2 group cursor-pointer relative ${isActive ? 'bg-white/6 text-white/90 z-10' : 'text-white/40 hover:bg-white/4'} `;
+                el.setAttribute('data-tab-id', tab.id);
+
+                // Don't attach per-element handlers (icons are replaced by lucide); use delegation instead
+                // el.onclick = () => switchToTab(tab.id);
+                // el.oncontextmenu = (e) => showContextMenu(e, tab.id);
+
+                el.innerHTML = `
+                    ${isActive ? '<div class="absolute -bottom-[1px] left-3 w-[calc(100%-24px)] h-0.5 bg-white/8 rounded"></div>' : ''}
+                    <span class="text-sm font-medium truncate flex-1 px-1">${tab.title}</span>
+                    <i data-lucide="x" size="12" class="close-btn ml-2 ${isActive ? 'text-white/30 hover:text-white/60' : 'text-white/20 hover:text-white/40'}"></i>
+                `;
+
+                // Attach X event manually to prevent bubbling issues
+                // close button handled via delegation on tabs-container
+
+                    container.appendChild(el);
+            });
+            lucide.createIcons();
+        }
+
+            // Event delegation for tab clicks and close button
+            (function attachTabDelegation(){
+                const container = document.getElementById('tabs-container');
+                if (!container) return;
+
+                // Ensure interactive area is clickable (no-drag)
+                container.classList.add('no-drag');
+
+                container.addEventListener('click', (e) => {
+                    const close = e.target.closest('.close-btn');
+                    if (close) {
+                        const tabEl = close.closest('.tab-item');
+                        if (tabEl) {
+                            const id = Number(tabEl.getAttribute('data-tab-id'));
+                            e.stopPropagation();
+                            promptDelete(id);
+                        }
+                        return;
+                    }
+
+                    const tabEl = e.target.closest('.tab-item');
+                    if (tabEl) {
+                        const id = Number(tabEl.getAttribute('data-tab-id'));
+                        switchToTab(id);
+                    }
+                });
+
+                container.addEventListener('contextmenu', (e) => {
+                    const tabEl = e.target.closest('.tab-item');
+                    if (tabEl) {
+                        const id = Number(tabEl.getAttribute('data-tab-id'));
+                        showContextMenu(e, id);
+                    }
+                });
+            })();
+
+        function switchToTab(id) {
+            activeTabId = id;
+            renderTabs();
+            updateEditor();
+        }
+
+        function addTab() {
+            const newId = (Math.max(0, ...tabs.map(t => t.id)) || 0) + 1;
+            tabs.push({ id: newId, title: `Untitled ${newId}`, content: '-- write your script here...\n' });
+            switchToTab(newId);
+        }
+
+        function updateEditor() {
+            const tab = tabs.find(t => t.id === activeTabId);
+            if (!tab) return;
+            
+            const input = document.getElementById('code-input');
+            input.value = tab.content;
+            highlightCode(tab.content);
+            updateLineNumbers(tab.content);
+        }
+
+        // --- EDITOR LOGIC ---
+        function initEditorEvents() {
+            const input = document.getElementById('code-input');
+            const pre = document.getElementById('code-highlight');
+            const lineNums = document.getElementById('line-numbers');
+
+            // Input Handlers
+            input.addEventListener('input', (e) => {
+                const val = e.target.value;
+                const tab = tabs.find(t => t.id === activeTabId);
+                if(tab) tab.content = val;
+                
+                highlightCode(val);
+                updateLineNumbers(val);
+            });
+
+            // Scroll Sync
+            input.addEventListener('scroll', () => {
+                pre.scrollTop = input.scrollTop;
+                pre.scrollLeft = input.scrollLeft;
+                lineNums.scrollTop = input.scrollTop;
+            });
+
+            // Auto-Close Pairs
+            input.addEventListener('keydown', (e) => {
+                const pairs = { '(': ')', '{': '}', '[': ']', '"': '"', "'": "'" };
+                if (pairs[e.key]) {
+                    e.preventDefault();
+                    const start = input.selectionStart;
+                    const end = input.selectionEnd;
+                    const val = input.value;
+                    
+                    input.value = val.substring(0, start) + e.key + pairs[e.key] + val.substring(end);
+                    input.selectionStart = input.selectionEnd = start + 1;
+                    
+                    // Trigger input event to update state
+                    input.dispatchEvent(new Event('input'));
+                }
+            });
+        }
+
+        function updateLineNumbers(code) {
+            const count = code.split('\n').length;
+            const container = document.getElementById('line-numbers');
+            container.innerHTML = Array.from({length: Math.max(count, 25)}, (_, i) => `<div>${i+1}</div>`).join('');
+        }
+
+        // --- SYNTAX HIGHLIGHTER (Vanilla JS port of previous Logic) ---
+        function highlightCode(code) {
+            if (!code) {
+                document.getElementById('code-highlight').innerHTML = '';
+                return;
+            }
+
+            // Escape HTML first
+            const escapeHtml = (unsafe) => {
+                return unsafe
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            };
+
+            // Simple tokenization regex
+            const regex = /(--.*)|("[^"]*"|'[^']*')|(\b(local|function|end|if|then|else|elseif|while|do|for|in|return|break|true|false|nil|not|and|or)\b)|(\b(print|warn|error|wait|game|workspace|script)\b)|(\b\d+(\.\d+)?\b)|([\+\-\*\/\%\^\#\=\~\<\>\(\)\{\}\[\]\.\,\;:])|(\s+)|(\w+)/g;
+
+            let html = '';
+            let match;
+            let lastIndex = 0;
+
+            while ((match = regex.exec(code)) !== null) {
+                const [full, comment, string, keywordWrapper, keyword, builtinWrapper, builtin, number, operator, whitespace, word] = match;
+                
+                const txt = escapeHtml(full);
+
+                if (comment) html += `<span class="token-comment">${txt}</span>`;
+                else if (string) html += `<span class="token-string">${txt}</span>`;
+                else if (keyword) html += `<span class="token-keyword">${txt}</span>`;
+                else if (builtin) html += `<span class="token-builtin">${txt}</span>`;
+                else if (number) html += `<span class="token-number">${txt}</span>`;
+                else if (operator) html += `<span class="text-white/60">${txt}</span>`; // Operators
+                else html += `<span class="text-white/80">${txt}</span>`; // Default/Whitespace
+            }
+
+            document.getElementById('code-highlight').innerHTML = html;
+        }
+
+
+        // --- UI SWITCHING ---
+        function switchView(view) {
+            const editorView = document.getElementById('view-editor');
+            const settingsView = document.getElementById('view-settings');
+            const btnEditor = document.getElementById('btn-editor');
+            const btnSettings = document.getElementById('btn-settings');
+            
+            // Reset Styles
+            const inactiveBtnClass = "hover:bg-white/5 bg-transparent shadow-none";
+            const activeBtnClass = "bg-white/10 shadow-inner";
+            const activeIconColor = "text-blue-400";
+            const inactiveIconColor = "text-white/40 group-hover:text-white/70";
+
+            if (view === 'editor') {
+                editorView.classList.remove('hidden');
+                settingsView.classList.add('hidden');
+                
+                btnEditor.className = `flex flex-col items-center justify-center gap-1.5 group w-full py-3 rounded-xl transition-all duration-300 ${activeBtnClass}`;
+                btnSettings.className = `flex flex-col items-center justify-center gap-1.5 group w-full py-3 rounded-xl transition-all duration-300 ${inactiveBtnClass}`;
+                
+                document.getElementById('icon-editor-wrapper').className = `rounded-lg transition-colors ${activeIconColor}`;
+                document.getElementById('icon-settings-wrapper').className = `rounded-lg transition-colors ${inactiveIconColor}`;
+                document.getElementById('text-editor').className = "text-[10px] font-medium text-white";
+                document.getElementById('text-settings').className = "text-[10px] font-medium text-white/40";
+
+            } else {
+                editorView.classList.add('hidden');
+                settingsView.classList.remove('hidden');
+
+                btnEditor.className = `flex flex-col items-center justify-center gap-1.5 group w-full py-3 rounded-xl transition-all duration-300 ${inactiveBtnClass}`;
+                btnSettings.className = `flex flex-col items-center justify-center gap-1.5 group w-full py-3 rounded-xl transition-all duration-300 ${activeBtnClass}`;
+
+                document.getElementById('icon-editor-wrapper').className = `rounded-lg transition-colors ${inactiveIconColor}`;
+                document.getElementById('icon-settings-wrapper').className = `rounded-lg transition-colors ${activeIconColor}`;
+                document.getElementById('text-editor').className = "text-[10px] font-medium text-white/40";
+                document.getElementById('text-settings').className = "text-[10px] font-medium text-white";
+            }
+        }
+
+        // --- CONTEXT MENU ---
+        function showContextMenu(e, id) {
+            e.preventDefault();
+            contextMenuTargetId = id;
+            const menu = document.getElementById('context-menu');
+            // position with a small offset to avoid cursor overlap
+            const x = Math.max(8, e.clientX - 8);
+            const y = Math.max(40, e.clientY - 8);
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            menu.classList.remove('hidden');
+            menu.classList.remove('pop-hide');
+            menu.classList.add('flex', 'glass-pop', 'pop-enter');
+            // allow layout then animate in
+            requestAnimationFrame(() => {
+                menu.classList.add('pop-show');
+                menu.classList.remove('pop-enter');
+            });
+        }
+
+        // Hide context menu on click elsewhere with animation
+        function hideContextMenu() {
+            const menu = document.getElementById('context-menu');
+            if (!menu || menu.classList.contains('hidden')) return;
+            menu.classList.remove('pop-show');
+            menu.classList.add('pop-hide');
+            setTimeout(() => { menu.classList.add('hidden'); menu.classList.remove('flex', 'pop-hide', 'glass-pop'); }, 180);
+        }
+
+        window.addEventListener('click', (ev) => {
+            // don't hide when clicking inside the menu
+            const menu = document.getElementById('context-menu');
+            if (menu && menu.contains(ev.target)) return;
+            hideContextMenu();
+        });
+
+        // --- MODAL ACTIONS ---
+        function startRename() {
+            hideContextMenu();
+            const tab = tabs.find(t => t.id === contextMenuTargetId);
+            if (!tab) return;
+            document.getElementById('rename-input').value = tab.title;
+            showModal('modal-rename');
+        }
+
+        function confirmRename() {
+            const newVal = document.getElementById('rename-input').value;
+            const tab = tabs.find(t => t.id === contextMenuTargetId);
+            if (tab) {
+                tab.title = newVal;
+                renderTabs();
+            }
+            hideModal('modal-rename');
+        }
+
+        function duplicateTab() {
+            hideContextMenu();
+            const tab = tabs.find(t => t.id === contextMenuTargetId);
+            if (tab) {
+                const newId = (Math.max(0, ...tabs.map(t => t.id)) || 0) + 1;
+                tabs.push({ id: newId, title: `Copy of ${tab.title}`, content: tab.content });
+                switchToTab(newId);
+            }
+        }
+
+        function promptDelete(id = null) {
+            hideContextMenu();
+            if (id) contextMenuTargetId = id;
+            showModal('modal-delete');
+        }
+
+        function confirmDelete() {
+            tabs = tabs.filter(t => t.id !== contextMenuTargetId);
+            if (tabs.length === 0) {
+                addTab(); // Ensure at least one tab
+            } else if (activeTabId === contextMenuTargetId) {
+                switchToTab(tabs[tabs.length - 1].id);
+            } else {
+                renderTabs();
+            }
+            hideModal('modal-delete');
+        }
+
+        function closeModals() {
+            hideModal('modal-rename');
+            hideModal('modal-delete');
+            hideModal('modal-theme');
+        }
+
+        // Generic modal show/hide helpers with glass pop animation
+        function showModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.remove('hidden');
+            el.classList.remove('pop-hide');
+            el.classList.add('glass-pop');
+            // animate inner dialog if present
+            const inner = el.querySelector('.modal-glass') || el.querySelector('[role="dialog"]') || el.firstElementChild;
+            if (inner) { inner.classList.add('modal-center', 'pop-enter'); requestAnimationFrame(() => { inner.classList.add('pop-show'); inner.classList.remove('pop-enter'); }); }
+        }
+
+        function hideModal(id) {
+            const el = document.getElementById(id);
+            if (!el || el.classList.contains('hidden')) return;
+            const inner = el.querySelector('.modal-glass') || el.querySelector('[role="dialog"]') || el.firstElementChild;
+            if (inner) { inner.classList.remove('pop-show'); inner.classList.add('pop-hide'); }
+            setTimeout(() => { el.classList.add('hidden'); el.classList.remove('glass-pop'); if (inner) inner.classList.remove('pop-hide'); }, 180);
+        }
+
+        // --- SETTINGS & THEMES ---
+        function toggleAccordion(btn) {
+            const content = btn.nextElementSibling;
+            // FIXED: Query by persistent class to handle Lucide SVG replacement
+            const icon = btn.querySelector('.accordion-icon'); 
+            
+            // Safety check
+            if (!content || !icon) return;
+
+            if (content.style.maxHeight) {
+                content.style.maxHeight = null;
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                content.style.maxHeight = content.scrollHeight + "px";
+                icon.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        async function toggleSwitch(el) {
+            const bg = el.querySelector('.switch-bg');
+            const dot = el.querySelector('.switch-dot');
+            const action = el.dataset.action || '';
+
+            let isOn = false;
+            if (bg.classList.contains('bg-blue-500/80')) {
+                // Turn Off
+                bg.classList.remove('bg-blue-500/80');
+                bg.classList.add('bg-white/10');
+                dot.classList.remove('translate-x-5');
+                dot.classList.add('translate-x-0');
+                isOn = false;
+            } else {
+                // Turn On
+                bg.classList.remove('bg-white/10');
+                bg.classList.add('bg-blue-500/80');
+                dot.classList.remove('translate-x-0');
+                dot.classList.add('translate-x-5');
+                isOn = true;
+            }
+
+            // If this switch controls always-on-top, call the native API
+            if (action === 'always-on-top' && window.electronAlways && window.electronAlways.setAlwaysOnTop) {
+                try { window.electronAlways.setAlwaysOnTop(isOn); } catch (e) { console.warn('alwaysOnTop API failed', e); }
+            }
+        }
+
+        function openThemeModal() {
+            const grid = document.getElementById('theme-grid');
+            grid.innerHTML = '';
+            
+            Object.entries(themes).forEach(([key, theme]) => {
+                const isActive = key === currentTheme;
+                const btn = document.createElement('button');
+                btn.className = `relative group p-1 rounded-xl transition-all duration-200 ${isActive ? 'ring-2 ring-blue-500 scale-105' : 'hover:scale-105'}`;
+                btn.onclick = () => applyTheme(key);
+                
+                btn.innerHTML = `
+                    <div class="h-20 rounded-lg ${theme.classes} mb-2 shadow-lg relative overflow-hidden">
+                        ${isActive ? '<div class="absolute inset-0 flex items-center justify-center"><div class="bg-white/20 backdrop-blur-md rounded-full p-1"><div class="w-2 h-2 bg-white rounded-full"></div></div></div>' : ''}
+                    </div>
+                    <span class="text-xs font-medium ${isActive ? 'text-white' : 'text-white/60'}">${theme.name}</span>
+                `;
+                grid.appendChild(btn);
+            });
+            
+            document.getElementById('modal-theme').classList.remove('hidden');
+        }
+
+        function applyTheme(key) {
+            currentTheme = key;
+            // MODIFIED: Target the panel instead of body
+            const panel = document.getElementById('glass-panel');
+            // Apply theme classes without changing panel layout so it remains full-bleed
+            // Preserve existing layout-related styles (the panel is positioned via inline style)
+            const base = 'bg-slate-900/30 backdrop-blur-xl flex overflow-hidden relative z-10 transition-colors duration-700';
+            panel.className = `${base} ${themes[key].classes}`;
+            
+            // Refresh modal if open to show selection ring
+            if(!document.getElementById('modal-theme').classList.contains('hidden')) {
+                openThemeModal();
+            }
+        }
+        
+        function clearTerminal() {
+            document.getElementById('terminal-content').innerHTML = '';
+        }
+
+        // --- Window controls wiring (connect traffic lights to preload IPC) ---
+        function attachWindowControls() {
+            const winApi = window.electron && window.electron.windowControls;
+            if (!winApi) return;
+
+            const btnClose = document.getElementById('btn-close');
+            const btnMin = document.getElementById('btn-minimize');
+            const btnMax = document.getElementById('btn-maximize');
+
+            if (btnClose) btnClose.addEventListener('click', () => winApi.close());
+            if (btnMin) btnMin.addEventListener('click', () => winApi.minimize());
+            if (btnMax) btnMax.addEventListener('click', () => winApi.toggleMaximize());
+
+            const topbar = document.getElementById('topbar');
+            if (topbar) topbar.addEventListener('dblclick', () => winApi.toggleMaximize());
+        }
+
+        document.addEventListener('DOMContentLoaded', attachWindowControls);
+
+        // --- EXECUTION: Connect Execute button to macsploit runner ---
+        async function appendTerminalLine(text, kind = 'info') {
+            const t = document.getElementById('terminal-content');
+            const el = document.createElement('div');
+            el.className = 'opacity-80 hover:opacity-100 transition-opacity';
+            if (kind === 'error') el.innerHTML = `<span class="text-red-400">error:</span> ${text}`;
+            else if (kind === 'success') el.innerHTML = `<span class="text-green-400">done:</span> ${text}`;
+            else el.innerHTML = `<span class="text-blue-400">info:</span> ${text}`;
+            t.appendChild(el);
+            t.scrollTop = t.scrollHeight;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const btn = document.getElementById('btn-execute');
+            if (btn && window.electronApi && window.electronApi.runMacsploit) {
+                btn.addEventListener('click', async (ev) => {
+                    const tab = tabs.find(t => t.id === activeTabId);
+                    if (!tab) return appendTerminalLine('No active tab', 'error');
+                    const script = tab.content || '';
+                    // Use selected `currentPort` only (no 'all' override)
+                    const portArg = currentPort;
+                    appendTerminalLine(`Sending script to MacSploit on port ${portArg}...`);
+                    try {
+                        const res = await window.electronApi.runMacsploit(script, portArg);
+                        if (!res) return appendTerminalLine('No response from runner', 'error');
+
+                        if (res.success && res.results) {
+                            appendTerminalLine('Executed across multiple ports', 'success');
+
+        // Poll macsploit ports periodically and update the terminal indicator
+        async function pollMacsploitStatus() {
+            try {
+                const target = (currentPort === 'all') ? 'all' : currentPort;
+                const res = (window.electronApiCheck && window.electronApiCheck.checkMacsploit)
+                    ? await window.electronApiCheck.checkMacsploit(target, 300)
+                    : null;
+
+                const indicator = document.getElementById('attach-indicator');
+                const label = document.getElementById('terminal-label');
+                if (!indicator) return;
+
+                const attached = !!(res && res.anyOpen);
+                if (attached) {
+                    // set inline styles so Tailwind JIT class generation isn't required
+                    indicator.style.backgroundColor = '#34D399'; // emerald-400
+                    indicator.style.boxShadow = '0 0 10px rgba(16,185,129,0.45)';
+                    indicator.classList.remove('animate-pulse');
+                    if (label) label.textContent = 'Terminal — connected';
+                } else {
+                    indicator.style.backgroundColor = '#ef4444'; // red-500
+                    indicator.style.boxShadow = '0 0 8px rgba(239,68,68,0.6)';
+                    indicator.classList.add('animate-pulse');
+                    if (label) label.textContent = 'Terminal';
+                }
+
+                // Optionally, show which ports are open in the terminal
+                if (res && res.checks) {
+                    // Clear a small status line and print port summary
+                    // Keep it minimal to avoid flooding terminal
+                    const anyOpen = res.anyOpen;
+                    // appendTerminalLine can be used but avoid spam — only log transitions
+                }
+            } catch (e) {
+                // ignore polling errors
+            }
+        }
+
+        // start polling every 2s
+        setInterval(pollMacsploitStatus, 2000);
+        // initial check after DOM ready
+        setTimeout(pollMacsploitStatus, 600);
+                            res.results.forEach(r => {
+                                appendTerminalLine(`Port ${r.port}: ${r.success ? 'OK' : 'FAILED'}`);
+                                if (r.stdout) appendTerminalLine(r.stdout);
+                                if (r.stderr) appendTerminalLine(r.stderr, 'error');
+                            });
+                        } else if (res.port) {
+                            // single result
+                            if (res.success) {
+                                appendTerminalLine(`Port ${res.port}: executed`, 'success');
+                                if (res.stdout) appendTerminalLine(res.stdout);
+                                if (res.stderr) appendTerminalLine(res.stderr, 'error');
+                            } else {
+                                appendTerminalLine(`Port ${res.port}: failed - ${res.error || res.stderr || ''}`, 'error');
+                            }
+                        } else {
+                            appendTerminalLine('Execution returned unexpected result: ' + JSON.stringify(res), 'error');
+                        }
+                    } catch (e) {
+                        appendTerminalLine('Execution exception: ' + (e && e.message ? e.message : String(e)), 'error');
+                    }
+                });
+            }
+        });
+
+        // Port selector: cycle forward on click, backward on right-click
+        (function attachPortSelector(){
+            const el = document.getElementById('port-selector');
+            if (!el) return;
+            const ports = Array.from({length:10}, (_,i) => 5553 + i);
+            function update() { el.textContent = String(currentPort); }
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (currentPort === 'all') currentPort = 5553;
+                else {
+                    const idx = ports.indexOf(Number(currentPort));
+                    currentPort = ports[(idx + 1) % ports.length];
+                }
+                update();
+            });
+            el.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const idx = ports.indexOf(Number(currentPort));
+                currentPort = ports[(idx - 1 + ports.length) % ports.length];
+                update();
+                return false;
+            });
+
+            // Prevent double-click from bubbling to the chrome/topbar (which toggles maximize)
+            el.addEventListener('dblclick', (e) => { e.preventDefault(); e.stopPropagation(); });
+
+            // no 'all' toggle
+            update();
+        })();
+
+        // --- RUN HASKELL (settings) ---
+        function runHaskellPrompt() {
+            const fp = prompt('Enter path to Haskell file to run (relative to app folder):', 'index.hs');
+            if (!fp) return;
+            appendTerminalLine(`Running Haskell file ${fp}...`);
+            if (window.electronApi && window.electronApi.runHaskellFile) {
+                window.electronApi.runHaskellFile(fp).then(res => {
+                    if (res && res.success) {
+                        appendTerminalLine('Haskell finished', 'success');
+                        if (res.stdout) appendTerminalLine(res.stdout);
+                        if (res.stderr) appendTerminalLine(res.stderr, 'error');
+                    } else {
+                        appendTerminalLine('Haskell failed: ' + (res && (res.error || res.stderr || JSON.stringify(res)) || 'unknown'), 'error');
+                    }
+                }).catch(err => appendTerminalLine('Run failed: ' + (err && err.message ? err.message : String(err)), 'error'));
+            } else {
+                appendTerminalLine('Haskell runner unavailable', 'error');
+            }
+        }
+
+    </script>
+</body>
+</html>
