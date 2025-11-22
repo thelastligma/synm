@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "main": "main.js",
+
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-packager . synm --platform=darwin --arch=arm64,x64 --out=dist --overwrite"
   },
+
   "devDependencies": {
-    "electron": "^26.0.0"
+    "electron": "^26.0.0",
+    "electron-packager": "^17.1.1"
   }
 }
